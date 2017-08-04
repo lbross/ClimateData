@@ -90,7 +90,7 @@
             map = new esri.Map("map", {
                 extent: initExtent
             });
-            //map.on("load", mapReady);
+            map.on("load", mapReady);
 
             var params = new esri.layers.ImageServiceParameters();
             var bLayer = new esri.layers.ArcGISDynamicMapServiceLayer("http://atlas.geog.pdx.edu/arcgis/rest/services/SNODAS/SNODAS_ReferenceMaps/MapServer", { "opacity": 0.5 });
