@@ -1,0 +1,346 @@
+﻿<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=7, IE=9, IE=10">
+    <!--The viewport meta tag is used to improve the presentation and behavior of the samples 
+      on iOS devices-->
+    <meta name="viewport" content="initial-scale=1, maximum-scale=1,user-scalable=no">
+    <title>SNODAS SWE Web Service</title>
+    <link rel="stylesheet" href="http://serverapi.arcgisonline.com/jsapi/arcgis/3.4/js/dojo/dijit/themes/claro/claro.css">
+    <link rel="stylesheet" href="http://serverapi.arcgisonline.com/jsapi/arcgis/3.4/js/esri/css/esri.css">
+
+    <style>
+    #status        
+    {
+        background-color:#E0E0E0;         
+        color: #FF0000;         
+        font-weight:bold;        
+        padding: 3px;         
+        border: solid 1px #707070;        
+        -moz-border-radius: 5px;        
+        -webkit-border-radius: 5px;            
+        border-radius:5px;        
+        position:absolute;        
+        top:50%;        
+        right:50%;        
+        z-index:100;        
+        display:none;        
+        height:20px;
+        vertical-align:middle;
+    }
+    </style>
+
+    <script src="http://serverapi.arcgisonline.com/jsapi/arcgis/3.4/"></script>
+    <script>
+        dojo.require("esri.map");
+        //esri.tasks.gp is required for using Geoprocessing.
+        dojo.require("esri.tasks.gp");
+        //esri.tasks.geometry is required for using Geometry to calculate lat/long
+        dojo.require("esri.tasks.geometry")
+
+      // one global for persistent app variables      
+      var app = {};
+      var map;
+      var myId = "usa";
+      // geometry service
+      var gsvc = null;
+
+      function init() {
+          var imageParameters = new esri.layers.ImageParameters();
+          imageParameters.format = "jpeg";  //set the image type to PNG24, note default is PNG8.
+
+          var bLayer = new esri.layers.ArcGISDynamicMapServiceLayer("http://atlas.geog.pdx.edu/arcgis/rest/services/SNODAS/SNODAS_ReferenceMaps/MapServer",{"opacity": 0.5});
+
+        //Takes a URL to a non cached map service.
+        var urlDyn = "http://atlas.geog.pdx.edu/arcgis/rest/services/SNODAS/SWE_SNODAS/MapServer";
+        var dynamicMapServiceLayer = new esri.layers.ArcGISDynamicMapServiceLayer(urlDyn, { "opacity": 1.0, "imageParameters": imageParameters, "id": myId });
+        //var dynamicMapServiceLayer = new esri.layers.ArcGISImageServiceLayer(urlDyn, { "opacity": 1.0, "imageParameters": imageParameters, "id": myId });
+        dynamicMapServiceLayer.setDisableClientCaching(true);
+
+        var extent = new esri.geometry.Extent({ "xmin": -2520000.00, "ymin": -455000.00, "xmax": 2400000.00, "ymax": 1000000.00, "spatialReference": { "wkid": 102003} });
+        //var extent = new esri.geometry.Extent({ "xmin": -2783654, "ymin": -2378983, "xmax": 2670743, "ymax": 390422, "spatialReference": { "wkid": 102003} });
+        //var extent = new esri.geometry.Extent({ "xmin": -13637622.54, "ymin": 5344016.10, "xmax": -12536929.33, "ymax": 6077811.57, "spatialReference": { "wkid": 102100} });
+
+        map = new esri.Map("map", { "sliderOrientation": "horizontal", "extent": extent });
+        map.addLayer(dynamicMapServiceLayer);
+        map.addLayer(bLayer);
+
+        app.map = map;
+
+        //AJAX code to load the select list from a text file on the server
+        //NOTE: The text file MUST be in the same directory as this html page
+        var Req = getXmlHttpRequestObject();
+        //alert(Req);
+        var output;
+        Req.open("GET", "SNODAS_SWE_list.txt", false);
+        Req.onreadystatechange = function () {
+            if (Req.readyState == 4) {
+                output = Req.responseText;
+                parseResponse(output);
+            }
+        }
+        Req.send(null);
+        // Checks the current data layer from the server and updates map layer on page
+        setMapServiceLayerName();
+        // Sets the select list to match the map layer
+        setSnoLayersSelected(document.getElementById("mapServiceLayer").innerHTML)
+
+        gsvc = new esri.tasks.GeometryService("http://tasks.arcgisonline.com/ArcGIS/rest/services/Geometry/GeometryServer");
+        dojo.connect(map, "onClick", function (evt) {
+            map.graphics.clear();
+            var myPoint = evt.mapPoint;
+            var xCoord = myPoint.x.toFixed(2);
+            dojo.byId("xCoord").innerHTML = xCoord;
+            var yCoord = myPoint.y.toFixed(2);
+            dojo.byId("yCoord").innerHTML = yCoord;
+            projectToLatLong(myPoint);
+        });
+
+        setSpatialReference();
+
+     }
+
+    function getXmlHttpRequestObject() {
+        if (window.XMLHttpRequest) {
+            req = new XMLHttpRequest();
+            return req; //Not IE
+        } else if (window.ActiveXObject) {
+            return new ActiveXObject("Microsoft.XMLHTTP"); //IE
+        } else {
+            alert("Your browser doesn't support the XmlHttpRequest object.");
+        }
+    }
+
+    function parseResponse(resp) {
+        var menu = document.getElementById("snoLayers");
+        var lines = resp.split("\n");
+        for (var i = 0; i < lines.length; i++) {
+            var option = document.createElement("option");
+            var words = lines[i].split(",");
+            option.value = words[0];
+            option.text = words[1];
+            try {
+                // for IE earlier than version 8
+                menu.add(option, menu.options[null]);
+            }
+            catch (e) {
+                menu.add(option, null);
+            }
+        }
+    }
+
+    function setMapServiceLayerName() {
+        var Req = getXmlHttpRequestObject();
+        var url = "SNODASWebService_SourceData.txt";
+        Req.open("GET", "SNODASWebService_SourceData.txt", false);
+        Req.onreadystatechange = function () {
+            if (Req.readyState == 4) {
+                document.getElementById("mapServiceLayer").innerHTML = Req.responseText;
+            }
+        }
+        Req.send(null);
+    }
+
+    function setSnoLayersSelected(selLayer) {
+        document.getElementById("mapLayer").innerHTML = selLayer;
+        var e = document.getElementById("snoLayers");
+        for (var i = 0; i < e.options.length; ++i) {
+            if (e.options[i].text == selLayer) {
+                e.options[i].selected = true;
+            }
+            else {
+                e.options[i].selected = false;
+            }
+        }
+    }
+
+    function setSpatialReference() {
+        var my_JSON_object = {};
+        var my_url = "http://atlas.geog.pdx.edu/arcgis/rest/services/SNODAS/SWE_SNODAS/MapServer/info/iteminfo?f=pjson";
+        var http_request = getXmlHttpRequestObject();
+        http_request.open("GET", my_url, false);
+        http_request.onreadystatechange = function () {
+            var done = 4, ok = 200;
+            if (http_request.readyState == done && http_request.status == ok) {
+                my_JSON_object = JSON.parse(http_request.responseText);
+                document.getElementById("spatialReference").innerHTML = my_JSON_object.spatialReference;
+            }
+        };
+        http_request.send(null);
+    }
+
+    function changeImage() {
+        var e = document.getElementById("snoLayers");
+        var strLayer = e.options[e.selectedIndex].text;
+        var strWorkspace = e.options[e.selectedIndex].value;
+
+        //alert("start");
+        // create a new array we do not want any other layers in
+        //app.dynLyrInfos = [];
+        if (!app.hasOwnProperty("dynLyrInfos")) { app.dynLyrInfos = app.map.getLayer(myId).createDynamicLayerInfosFromLayerInfos(); }
+
+        // get handle to first layer
+        dynamicLayerInfo = app.dynLyrInfos[0];
+ 
+        // create a raster data source to access the next layer
+        dataSource = new esri.layers.RasterDataSource();
+        dataSource.workspaceId = strWorkspace;
+        dataSource.dataSourceName = strLayer;
+
+        // and now a layer source
+        layerSource = new esri.layers.LayerDataSource();
+        layerSource.dataSource = dataSource;
+        dynamicLayerInfo.source = layerSource;
+        app.dynLyrInfos.push(dynamicLayerInfo);
+        //alert(app.map.getLayer(myId));
+
+        //set new infos and refresh map
+        //map will be updated when the drawing options are set
+        app.map.getLayer(myId).setDynamicLayerInfos(app.dynLyrInfos, false);
+        //app.map.getLayer(myId).refresh();
+        //alert("done");
+        document.getElementById("mapLayer").innerHTML = strLayer;
+    }
+
+    // Use this function of the GP service is synchronous
+    function updateWebServiceSync() {
+        // Initialize geoprocessing task
+        var gpTaskUrl = "http://atlas.geog.pdx.edu/arcgis/rest/services/SNODAS_Utilities/ReplaceSWELayer/GPServer/ReplaceSWELayer";
+        var gpTask = new esri.tasks.Geoprocessor(gpTaskUrl);
+
+        //set up the params for the task; New layer name
+        var e = document.getElementById("snoLayers");
+        var strLayer = e.options[e.selectedIndex].text;
+        var params = { "Source_File":strLayer };
+
+        //setup onTaskSuccess and onTaskFailure event handlers.
+        dojo.connect(gpTask, "onExecuteComplete", onTaskSuccess);
+        dojo.connect(gpTask, "onError", onTaskFailure);
+        //execute gpTask with params
+        gpTask.execute(params);
+        //gpTask.submitJob(params, onTaskSuccess, gpJobStatus, onTaskFailure);
+    }
+
+    // Use this function of the GP service is asynchronous - shows status
+    function updateWebServiceASync() {
+        // Initialize geoprocessing task
+        var gpTaskUrl = "http://atlas.geog.pdx.edu/arcgis/rest/services/SNODAS_Utilities/ReplaceSWELayer/GPServer/ReplaceSWELayer";
+        var gpTask = new esri.tasks.Geoprocessor(gpTaskUrl);
+
+        //set up the params for the task; New layer name
+        var e = document.getElementById("snoLayers");
+        var strLayer = e.options[e.selectedIndex].text;
+        //var params = { "Source_File": strLayer };
+        var params = { Source_File: strLayer };
+
+        //disable the submit button so they don't try to do it twice
+        var btn = document.getElementById("BtnMapService");
+        btn.disabled = true;
+
+        //execute gpTask with params
+        gpTask.submitJob(params, onTaskSuccess, gpJobStatus, onTaskFailure);
+    }
+
+    //Callback when the Task operation succeeded
+    function onTaskSuccess(results) {
+        //do something with the results,
+        alert("The source data layer for the SNODAS SWE web service has been changed.");
+        //Can't check the file for the layer name because it caches from page load
+        //setMapServiceLayerName(); 
+        var e = document.getElementById("snoLayers");
+        document.getElementById("mapServiceLayer").innerHTML = e.options[e.selectedIndex].text;
+        //re-enable the submit button
+        var btn = document.getElementById("BtnMapService");
+        btn.disabled = false;  
+    }
+
+    //Handler that is invoked when the Task operation has failed
+    function onTaskFailure(error) {
+        //report error to the user appropriately
+        alert(error);
+        dojo.byId('status').innerHTML = error;
+        esri.hide(dojo.byId('status'));
+        var btn = document.getElementById("BtnMapService");
+        btn.disabled = false;  
+    }
+
+    function gpJobStatus(jobinfo) {
+        esri.show(dojo.byId('status'));
+        var jobstatus = '';
+        switch (jobinfo.jobStatus) {
+            case 'esriJobSubmitted': jobstatus = 'Updating Map Service...';
+                break;
+            case 'esriJobExecuting': jobstatus = 'Executing...';
+                break;
+            case 'esriJobSucceeded': esri.hide(dojo.byId('status'));
+                break;
+        }
+        dojo.byId('status').innerHTML = 'Updating Map Service...'; 
+    }
+
+
+    function projectToLatLong(myPoint) {
+        var outSR = new esri.SpatialReference({ wkid: 4326 });
+        var params = new esri.tasks.ProjectParameters();
+        var pt = [];
+        pt[0] = myPoint;
+        params.geometries = pt;
+        params.outSR = outSR;
+        gsvc.project(params, function (projectedPoints) {
+            pt = projectedPoints[0];
+            dojo.byId("xLong").innerHTML = pt.x.toFixed(2);
+            dojo.byId("yLat").innerHTML = pt.y.toFixed(2);
+        }); 
+    }
+    
+    function BtnUpdate_onclick() {
+        changeImage();
+    }
+
+    function BtnMapService_onclick() {
+        updateWebServiceASync();
+    }
+
+  dojo.ready(init);
+    </script>
+  </head>
+  <body class="claro">
+    <div id="title" style="position:absolute; width:900px; text-align:center;"><H3>SNODAS Snow Water Equivalent (<div id ="mapLayer" style="display: inline"></div>)</H3></div>
+    <div id="map" style="width:900px; height:600px; border:1px solid #000; background-color:#000;position:absolute; top:55px;">
+        <span id="status" style="position:absolute; top:50%; left:40%; height:1.5em; width:12em; margin-top:-5em; text-align:center;"></span>
+    </div>
+    <!--Creates a map and adds an ArcGISDynamicMapServiceLayer.<br /> -->
+    <div id="navigation" style="position:absolute; top:665px; width:950px;">
+    <div id="left-pane" style="float:left; width:350px;">
+             Map navigation using mouse:
+    <ul>
+      <li>Drag to pan</li>
+      <li>SHIFT + Click to recenter</li>
+      <li>SHIFT + Drag to zoom in</li>
+      <li>SHIFT + CTRL + Drag to zoom out</li>
+      <li>Mouse Scroll Forward to zoom in</li>
+      <li>Mouse Scroll Backward to zoom out</li>
+      <li>Use Arrow keys to pan</li>
+      <li>+ key to zoom in a level</li>
+      <li>- key to zoom out a level</li>
+      <li>Double Click to Center and Zoom in</li>
+    </ul>
+    </div>
+    <div id="right-pane" style="float:left;">
+        <div style="display: block"> Current map service layer: <B><font color="orange"><div id ="mapServiceLayer" style="display: inline"></div></font></B></div>
+        <div style="display: block">
+            <select id="snoLayers">
+            </select>&nbsp;&nbsp;<input id="BtnUpdate" type="button" value="Update Map" onclick="return BtnUpdate_onclick()" />
+            <!--&nbsp;&nbsp;<input id="BtnMapService" type="button" value="Update Map Service" onclick="return BtnMapService_onclick()" /> -->
+        </div>
+         <div style="float:left; position:absolute; top:65px; width:550px;">
+            <div>Click on the map for the XY coordinates.</div>
+            <div>Projection: <div id ="spatialReference" style="display: inline"></div></div>
+            <div style="position:relative; top:5px; left:0px;">X: &nbsp;&nbsp;&nbsp;&nbsp;<span id="xCoord" style="display:inline-block; width:90px; border:solid 1px black; padding-left:2px; padding-right:1px;">&nbsp;</span>&nbsp;Y: &nbsp;&nbsp;&nbsp;&nbsp;<span id="yCoord" style="display:inline-block; width:90px; border:solid 1px black; padding-left:2px; padding-right:1px;">&nbsp;</span></div>
+            <div style="position:relative; top:10px; left:0px;">Longitude: <span id="xLong" style="display:inline-block; width:90px; border:solid 1px black; padding-left:2px; padding-right:1px;">&nbsp;</span>&nbsp;Latitude: <span id="yLat" style="display:inline-block; width:90px; border:solid 1px black; padding-left:2px; padding-right:1px;">&nbsp;</span></div>
+        </div>
+    </div>
+    </div>
+  </body>
+</html>
