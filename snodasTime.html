@@ -90,13 +90,13 @@
             map = new esri.Map("map", {
                 extent: initExtent
             });
-            map.on("load", mapReady);
+            //map.on("load", mapReady);
 
             var params = new esri.layers.ImageServiceParameters();
             var bLayer = new esri.layers.ArcGISDynamicMapServiceLayer("http://atlas.geog.pdx.edu/arcgis/rest/services/SNODAS/SNODAS_ReferenceMaps/MapServer", { "opacity": 0.5 });
             //var imageServiceLayer = new esri.layers.ArcGISImageServiceLayer("https://sampleserver3.arcgisonline.com/ArcGIS/rest/services/World/MODIS/ImageServer", { imageServiceParameters: params });
             var imageServiceLayer = new esri.layers.ArcGISImageServiceLayer(imageServiceUrl, { imageServiceParameters: params });
-            map.addLayers([imageServiceLayer]);
+            map.addLayers([imageServiceLayer, bLayer]);
             dojo.connect(map, "onLayersAddResult", initSlider);
         }
 
@@ -113,7 +113,7 @@
             map.setTimeSlider(timeSlider);
             var timeExtent = new esri.TimeExtent();
             timeSlider.setThumbCount(1);
-            timeExtent = results[0].layer.timeInfo.timeExtent;
+            timeExtent = results[1].layer.timeInfo.timeExtent;
             timeSlider.createTimeStopsByTimeInterval(timeExtent, 1, 'esriTimeUnitsDays');
             timeSlider.setThumbMovingRate(2000);
             timeSlider.singleThumbAsTimeInstant(true);
